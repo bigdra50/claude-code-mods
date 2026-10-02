@@ -2,7 +2,7 @@
 
 11 mods for Claude Code: live panes, bands above the prompt, guards and games, written as hot-reloading hook plugins.
 
-From the maker of [**cursor-commands**](https://github.com/hamzafer/cursor-commands) [![stars](https://img.shields.io/github/stars/hamzafer/cursor-commands?style=social)](https://github.com/hamzafer/cursor-commands), 600+ ⭐ for Cursor slash commands. If these mods make you smile, a ⭐ here helps too.
+Prev: [**cursor-commands**](https://github.com/hamzafer/cursor-commands) [![stars](https://img.shields.io/github/stars/hamzafer/cursor-commands?style=social)](https://github.com/hamzafer/cursor-commands), 600+ ⭐ for Cursor slash commands.
 
 ![reels: Shorts play while Claude works and pause when it's done](docs/reels-demo.gif)
 
@@ -25,10 +25,6 @@ From the maker of [**cursor-commands**](https://github.com/hamzafer/cursor-comma
 **browser-lanes, token-weather and where-am-i**, stacked above the prompt
 
 ![bands above the prompt](docs/bands.png)
-
-**reels**, paused because Claude is done
-
-<img src="docs/reels.png" alt="reels pane paused" width="360">
 
 **blast-radius** holds an `rm -rf` and shows what it would delete
 
