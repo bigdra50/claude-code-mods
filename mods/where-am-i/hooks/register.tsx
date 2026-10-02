@@ -1,8 +1,8 @@
-// Where Am I: a live recap above the prompt (goal, now, waiting on you, next), plus /recap.
+// Where Am I: a live recap above the prompt (goal, now, waiting on you, next), plus /where.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Recap, RunningAgent } from '../types'
+import type { Recap } from '../types'
 
 const MODEL = 'haiku'
 const MAX_LOG = 20
@@ -10,7 +10,6 @@ const MAX_LOG = 20
 // Held by the host, so the recap survives a hot reload of this file.
 const recap = atom({ plugin: 'where-am-i', key: 'recap' } as const, null as Recap | null)
 const live = atom({ plugin: 'where-am-i', key: 'live' } as const, '')
-const agents = atom({ plugin: 'where-am-i', key: 'agents' } as const, [] as RunningAgent[])
 
 export const register: Register = on => {
   let prompt = ''
@@ -18,7 +17,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const r = await next(e)
-    await $.command.register({ name: 'recap', description: 'Where are we? A short recap of the session so far' })
+    await $.command.register({ name: 'where', description: 'Where are we? A short recap of the session so far' }).catch(() => {}) // a name Claude Code already has is refused: start anyway
     return r
   })
 
@@ -35,13 +34,11 @@ export const register: Register = on => {
     log = [...log, e.agentId ? `(agent) ${line}` : line].slice(-MAX_LOG)
     if (!e.agentId) await update($, live, () => line)
     const r = await next(e)
-    if (e.tool === 'Agent') await refreshAgents($)
     return r
   })
 
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
-    await refreshAgents($)
     if (!e.agentId) {
       await update($, live, () => '')
       void summarize($, prompt, log, e.answer).catch(() => {}) // in the background, so the turn ends at once
@@ -49,7 +46,7 @@ export const register: Register = on => {
     return r
   })
 
-  on('command.run', { command: 'recap' }, async $ => ({ text: await longRecap($, prompt, log) }))
+  on('command.run', { command: 'where' }, async $ => ({ text: await longRecap($, prompt, log) }))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const rest = await next(e) // what other mods and Claude Code draw here stays
@@ -58,7 +55,6 @@ export const register: Register = on => {
 
     const { Box, Text } = $.ui.resolve(e)
     const now = clip((await read($, live)) || r.now)
-    const running = await read($, agents)
 
     return (
       <Box flexDirection="column">
@@ -75,11 +71,6 @@ export const register: Register = on => {
           </Text>
           {r.waiting !== '' && (
             <Text color="yellow" wrap="truncate-end">{`  waiting on you: ${clip(r.waiting)}`}</Text>
-          )}
-          {running.length > 0 && (
-            <Text dimColor wrap="truncate-end">
-              {`  agents: ${running.length} running · ${running.map(a => a.description).join(', ')}`}
-            </Text>
           )}
         </Box>
         {rest}
@@ -101,12 +92,6 @@ export function describe(e: Record<string, unknown>): string {
   if (tool === 'AskUserQuestion') return 'asking you a question'
   if (tool.startsWith('mcp__')) return `using ${tool.split('__').slice(1).join(' ')}`
   return `using ${tool}`
-}
-
-async function refreshAgents($: EngineInterface) {
-  const list = await $.agent.list()
-  const running = list.filter(a => a.status === 'running').map(a => ({ id: a.id, description: a.description }))
-  await update($, agents, () => running)
 }
 
 async function summarize($: EngineInterface, prompt: string, log: string[], answer: string) {
@@ -141,9 +126,10 @@ async function longRecap($: EngineInterface, prompt: string, log: string[]) {
       'Write a recap of this coding session for someone who lost track. Plain words, no em dashes. ' +
       'At most 6 short bullets: the goal, what is done, what is happening now, what is waiting on them, the next step.',
     prompt: [
-      `Recent messages:\n${messages.map(m => `${m.role}: ${m.text.slice(0, 800)}`).join('\n')}`,
+      `<transcript>\n${messages.filter(m => m.text.trim() !== '').map(m => `[${m.role === 'user' ? 'person' : 'assistant'}] ${m.text.slice(0, 800)}`).join('\n')}\n</transcript>`,
       `Latest message: ${prompt}`,
       `Recent tool calls: ${log.join('; ') || 'none'}`,
+      'Write the recap of the transcript above now: the bullets only, not a reply to it.',
     ].join('\n\n'),
   })
   return r.isAnswered ? r.text : 'Could not build a recap right now.'
