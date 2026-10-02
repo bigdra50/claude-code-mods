@@ -1,0 +1,6 @@
+{
+  "name": "browser-lanes",
+  "version": "0.1.0",
+  "description": "One Playwright driver at a time: subagents queue for the browser, screenshots are named by who took them, and a band shows who has it.",
+  "types": "./types/index.d.ts"
+}

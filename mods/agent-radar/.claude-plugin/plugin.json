@@ -1,0 +1,6 @@
+{
+  "name": "agent-radar",
+  "version": "0.1.0",
+  "description": "What are my subagents cooking? /agents pane: each agent's status, time, tool count and live action; toasts when they finish.",
+  "types": "./types/index.d.ts"
+}
