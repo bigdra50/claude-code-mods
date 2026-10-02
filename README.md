@@ -2,6 +2,8 @@
 
 11 mods for Claude Code: live panes, bands above the prompt, guards and games, written as hot-reloading hook plugins.
 
+From the maker of [**cursor-commands**](https://github.com/hamzafer/cursor-commands) [![stars](https://img.shields.io/github/stars/hamzafer/cursor-commands?style=social)](https://github.com/hamzafer/cursor-commands), 600+ ⭐ for Cursor slash commands. If these mods make you smile, a ⭐ here helps too.
+
 ![reels: Shorts play while Claude works and pause when it's done](docs/reels-demo.gif)
 
 | Mod | What it does |
