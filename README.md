@@ -2,6 +2,8 @@
 
 11 mods for Claude Code: live panes, bands above the prompt, guards and games, written as hot-reloading hook plugins.
 
+![reels: Shorts play while Claude works and pause when it's done](docs/reels-demo.gif)
+
 | Mod | What it does |
 | --- | --- |
 | **reels** | YouTube Shorts in a terminal pane: plays while Claude works, pauses when Claude is done. |
@@ -15,6 +17,32 @@
 | **session-saver** | Names untitled sessions; `/park` saves where you left off and a resumed session shows it. |
 | **token-weather** | A live forecast of the context window, drawn above the prompt. |
 | **where-am-i** | A live recap above the prompt: goal, doing now, waiting on you, next. `/recap` |
+
+## Screenshots
+
+**browser-lanes, token-weather and where-am-i**, stacked above the prompt
+
+![bands above the prompt](docs/bands.png)
+
+**reels**, paused because Claude is done
+
+<img src="docs/reels.png" alt="reels pane paused" width="360">
+
+**blast-radius** holds an `rm -rf` and shows what it would delete
+
+![blast-radius](docs/blast-radius.png)
+
+**rulebook-guard** catches a `git commit --amend`
+
+![rulebook-guard](docs/rulebook-guard.png)
+
+**replay-theater** steps through the last turn's edits
+
+![replay-theater](docs/replay-theater.png)
+
+**where-am-i** recap with token-weather above it
+
+![where-am-i](docs/where-am-i.png)
 
 ## Try one
 
