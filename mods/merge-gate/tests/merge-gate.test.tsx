@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { countChecks, isOllama } from '../hooks/register'
+import { bare, countChecks, isOllama, prNumber } from '../hooks/register'
 
 const LUNA_REVIEW = `codex review -c 'model="gpt-5.6-luna"' --base main --title "Add mods"`
 const BAND = { component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 140 } }
@@ -72,6 +72,98 @@ describe('merge-gate', () => {
     const r: any = await $.tool.call({ tool: 'Bash', command: 'codex exec "fix it"' } as any)
     expect(r.deny).toMatch(/review only/)
     expect(ran).toEqual([])
+  })
+
+  test('bare and prNumber read the command as the shell does', () => {
+    expect(bare(`grep -n "codex exec" x && echo 'gh pr merge'`)).toBe(`grep -n "" x && echo ''`)
+    expect(bare('ls # codex exec\npwd')).toBe('ls \npwd')
+    expect(bare("cat <<'EOF' > a.md\ncodex exec x\nEOF\nls")).toBe('cat  > a.md\n\nls')
+    expect(bare('out="$(codex exec x)"')).toBe('out="(codex exec x)"')
+    expect(prNumber('gh pr merge 42 --squash')).toBe('42')
+    expect(prNumber('gh pr merge --squash 7 && ls')).toBe('7')
+    expect(prNumber('gh -R o/r pr merge --squash')).toBeUndefined()
+    expect(prNumber(bare('gh pr merge "42" --squash'))).toBe('42')
+    expect(bare('cat <<EOF && ls\nbody\nEOF')).toBe('cat  && ls\n')
+  })
+
+  test('a long command is still read quickly', async ($, on) => {
+    engine(on)
+    for (const command of ['; x=1'.repeat(20_000), `;${'\n'.repeat(30_000)}`, '-a '.repeat(20_000)]) {
+      const t = Date.now()
+      await $.tool.call({ tool: 'Bash', command } as any)
+      expect(Date.now() - t).toBeLessThan(1000)
+    }
+  })
+
+  test('codex exec, codex review and gh pr merge are caught where the shell runs them', async ($, on) => {
+    const { ran } = engine(on, { checks: [{ name: 'lint', bucket: 'fail' }], answer: 'Hold' })
+    await start($)
+    const forms = (cmd: string) => [
+      cmd,
+      `cd repo && ${cmd}`,
+      `FOO=1 ${cmd}`,
+      `npx ${cmd}`,
+      `sudo ${cmd}`,
+      `ls; ${cmd}`,
+      `false || ${cmd}`,
+      `ls\n${cmd}`,
+      `(${cmd})`,
+      `out="$(${cmd})"`,
+      `echo \`${cmd}\``,
+      `/usr/local/bin/${cmd}`,
+      `\\${cmd}`,
+      `timeout 900 ${cmd}`,
+      `nohup ${cmd} &`,
+      `command ${cmd}`,
+      `xargs -n 1 ${cmd}`,
+      `sudo -u bob ${cmd}`,
+      `{ ${cmd}; }`,
+      `if ${cmd}; then :; fi`,
+      `bash -lc '${cmd}'`,
+      `eval '${cmd}'`,
+      `cat <<EOF | ${cmd}\nbody\nEOF`,
+      `bash <<'EOF'\n${cmd}\nEOF`,
+      `echo $'a\\'b'; ${cmd}`,
+    ]
+    const cases: [string, RegExp][] = [
+      ...forms('codex exec "fix it"').map(c => [c, /review only/] as [string, RegExp]),
+      ['codex -c k=v exec x', /review only/],
+      ['codex --model o3 exec x', /review only/],
+      ['codex --full-auto exec x', /review only/],
+      ...forms('codex review --base main').map(c => [c, /gpt-5\.6-luna only/] as [string, RegExp]),
+      ['codex -c k=v review --base main', /gpt-5\.6-luna only/],
+      ...forms('gh pr merge 42 --squash').map(c => [c, /held the merge of PR #42/] as [string, RegExp]),
+      ['gh -R owner/repo pr merge 42', /held the merge/],
+      ['gh pr merge --squash 42', /held the merge of PR #42/],
+    ]
+    for (const [command, deny] of cases) {
+      const r: any = await $.tool.call({ tool: 'Bash', command } as any)
+      expect([command, deny.test(r.deny ?? '')]).toEqual([command, true])
+    }
+    expect(ran).toEqual([])
+  })
+
+  test('mentions in quotes, heredocs, patterns, messages and comments pass', async ($, on) => {
+    const { ran } = engine(on, { checks: [{ name: 'lint', bucket: 'fail' }], answer: 'Hold' })
+    await start($)
+    const mentions = (cmd: string) => [
+      `grep -rn "${cmd}" .`,
+      `rg '${cmd}' docs`,
+      `git commit -m "Never run ${cmd}"`,
+      `git commit -m "$(cat <<'EOF'\nUse ${cmd} with care\nEOF\n)"`,
+      `cat <<'EOF' > notes.md\n${cmd}\nEOF`,
+      `ls # ${cmd}`,
+      `# ${cmd}\nls`,
+      `echo ${cmd}`,
+      `echo "it's ${cmd}"`,
+      `FOO='${cmd}' ls`,
+    ]
+    const commands = [...mentions('codex exec x'), ...mentions('codex review --base main'), ...mentions('gh pr merge 42')]
+    for (const command of commands) {
+      const r: any = await $.tool.call({ tool: 'Bash', command } as any)
+      expect({ command, deny: r.deny }).toEqual({ command, deny: undefined })
+    }
+    expect(ran).toEqual(commands)
   })
 
   test('merge is held when CI fails and Codex has not run', async ($, on) => {
