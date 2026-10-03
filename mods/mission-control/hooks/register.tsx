@@ -27,6 +27,8 @@ const view = atom({ plugin: 'mission-control', key: 'view' } as const, 'who' as 
 const frame = atom({ plugin: 'mission-control', key: 'frame' } as const, null as { file: string; n: number } | null)
 const turn = atom({ plugin: 'mission-control', key: 'turn' } as const, 0)
 const now = atom({ plugin: 'mission-control', key: 'now' } as const, 0)
+// The WezTerm pane showing the map, by id. Held by the host so a reload does not open a second one.
+const sidePane = atom({ plugin: 'mission-control', key: 'sidePane' } as const, null as string | null)
 
 // Drawing bookkeeping; a reload starts it over.
 const draw = { size: { columns: 100, rows: 30 }, pending: false, dirty: false, n: 0, error: '' }
@@ -39,6 +41,16 @@ export function cap(list: MissionNode[]) {
   const room = Math.max(0, MAX_NODES - (list.length - tools.length))
   const keep = new Set(room === 0 ? [] : tools.slice(-room))
   return list.filter(n => n.kind !== 'tool' || keep.has(n))
+}
+
+// WezTerm takes kitty images but not the Unicode placeholders Claude Code places them with,
+// so an Image lands at the cursor, over the chat. There the map goes to a WezTerm pane instead.
+// Inside tmux or screen the pane would split the multiplexer's view, not WezTerm's: no side pane.
+export function wezTermSide(env: Readonly<Record<string, string | undefined>>): { pane: string; bin: string } | undefined {
+  if (env.TERM_PROGRAM !== 'WezTerm' || env.TMUX || env.STY) return undefined
+  if (!env.WEZTERM_PANE || !env.WEZTERM_EXECUTABLE_DIR) return undefined
+  // Not `wezterm` from PATH: Claude Code started from a WezTerm key binding has no Homebrew PATH.
+  return { pane: env.WEZTERM_PANE, bin: `${env.WEZTERM_EXECUTABLE_DIR}/wezterm` }
 }
 
 // The first `max` characters, cut at a word.
@@ -140,6 +152,8 @@ export const register: Register = on => {
     const arg = e.args.trim().toLowerCase()
     if (arg === 'code' || arg === 'who') await update($, view, () => arg)
     await $.ui.open({ id: PANE, title: 'Mission Control', focus: true })
+    if (arg === 'code') await openSide($)
+    if (arg === 'who') await closeSide($)
     void renderSoon($)
     const s = summary(await read($, nodes))
     return { text: `Mission Control: ${s.agents} agents · ${s.tools} tool calls · ${(await read($, files)).length} files. w: who · c: code · q: close` }
@@ -153,9 +167,9 @@ export const register: Register = on => {
     const columns = Math.max(20, e.props.bodyColumns)
     const head = (
       <Box flexDirection="row" gap={1}>
-        <Button key="who" label="Who" hotkey="w" variant={v === 'who' ? 'primary' : undefined} onPress={() => update($, view, () => 'who')} />
-        <Button key="code" label="Code" hotkey="c" variant={v === 'code' ? 'primary' : undefined} onPress={() => void setCode($)} />
-        <Button key="close" label="Close" hotkey="q" role="dismiss" onPress={() => $.ui.close({ id: PANE })} />
+        <Button key="who" label="Who" hotkey="w" variant={v === 'who' ? 'primary' : undefined} onPress={() => setWho($)} />
+        <Button key="code" label="Code" hotkey="c" variant={v === 'code' ? 'primary' : undefined} onPress={() => setCode($)} />
+        <Button key="close" label="Close" hotkey="q" role="dismiss" onPress={() => closeAll($)} />
       </Box>
     )
 
@@ -175,6 +189,14 @@ export const register: Register = on => {
       if (draw.size.columns !== columns || draw.size.rows !== imageRows) {
         draw.size = { columns, rows: imageRows }
         void renderSoon($)
+      }
+      if (await sideOf($)) {
+        return (
+          <Box flexDirection="column">
+            {head}
+            <Text dimColor>{draw.error || 'The code map is in the WezTerm pane on the right.'}</Text>
+          </Box>
+        )
       }
       const f = await read($, frame)
       return (
@@ -235,7 +257,56 @@ export const register: Register = on => {
 
 async function setCode($: EngineInterface) {
   await update($, view, () => 'code')
+  await openSide($)
   await renderSoon($)
+}
+
+async function setWho($: EngineInterface) {
+  await update($, view, () => 'who')
+  await closeSide($)
+}
+
+async function closeAll($: EngineInterface) {
+  await closeSide($)
+  await $.ui.close({ id: PANE })
+}
+
+async function sideOf($: EngineInterface) {
+  return wezTermSide({
+    TERM_PROGRAM: await $.env.get('TERM_PROGRAM'),
+    TMUX: await $.env.get('TMUX'),
+    STY: await $.env.get('STY'),
+    WEZTERM_PANE: await $.env.get('WEZTERM_PANE'),
+    WEZTERM_EXECUTABLE_DIR: await $.env.get('WEZTERM_EXECUTABLE_DIR'),
+  })
+}
+
+async function mapDir($: EngineInterface) {
+  return `${((await $.env.get('TMPDIR')) ?? '/tmp').replace(/\/$/, '')}/mission-control`
+}
+
+// Opens the WezTerm pane that shows the map, unless the one opened before is still there.
+async function openSide($: EngineInterface) {
+  const w = await sideOf($)
+  if (!w) return
+  const open = await read($, sidePane)
+  if (open !== null) {
+    const list = await $.process.run([w.bin, 'cli', 'list', '--format', 'json'], { timeoutMs: 5_000 }).catch(() => null)
+    const ids = list?.exitCode === 0 ? (JSON.parse(list.stdout || '[]') as { pane_id: number }[]).map(p => String(p.pane_id)) : []
+    if (ids.includes(open)) return
+  }
+  const script = `${$.plugin.root}/helper/mission-map.sh`
+  const r = await $.process.run([w.bin, 'cli', 'split-pane', '--pane-id', w.pane, '--right', '--percent', '40', '--', 'bash', script, await mapDir($)], { timeoutMs: 5_000 }).catch(() => null)
+  const id = r?.exitCode === 0 ? r.stdout.trim() : ''
+  await update($, sidePane, () => id || null)
+}
+
+async function closeSide($: EngineInterface) {
+  const open = await read($, sidePane)
+  if (open === null) return
+  await update($, sidePane, () => null)
+  const w = await sideOf($)
+  if (w) await $.process.run([w.bin, 'cli', 'kill-pane', '--pane-id', open], { timeoutMs: 5_000 }).catch(() => null)
 }
 
 // Notes a file Claude touched, with the relative imports it has.
@@ -309,8 +380,7 @@ async function renderMap($: EngineInterface) {
     return
   }
   draw.error = ''
-  const tmp = ((await $.env.get('TMPDIR')) ?? '/tmp').replace(/\/$/, '')
-  const dir = `${tmp}/mission-control`
+  const dir = await mapDir($)
   const n = ++draw.n
   const width = Math.round(draw.size.columns * 9)
   const height = Math.round(draw.size.rows * 19)

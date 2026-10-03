@@ -25,6 +25,7 @@
 - Press `w` for Who and `c` for Code
 - Headless Chrome (`/Applications/Google Chrome.app`) draws the code map as an image, in a throwaway profile
 - The Code view is macOS only
+- In WezTerm the code map opens in a WezTerm pane to the right, since WezTerm cannot place Claude Code's images. Going back to Who, or closing, closes that pane. Not inside tmux or screen
 - A file glows blue while Claude reads it, orange while it edits it, and turns green with a check once changed
 - One Haiku call after each turn writes the line under each changed file
 

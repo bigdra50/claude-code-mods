@@ -32,7 +32,7 @@
     {
       "name": "mission-control",
       "description": "/mission: a live map of the main agent, its subagents and every tool call, and a live code map of the files they touch.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "source": "./mods/mission-control"
     },
     {

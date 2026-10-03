@@ -31,6 +31,8 @@ declare module 'claude-code' {
       frame: MissionFrame
       turn: number
       now: number
+      /** The WezTerm pane id showing the code map, or null when none is open. */
+      sidePane: string | null
     }
   }
 }
